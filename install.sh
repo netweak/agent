@@ -115,8 +115,8 @@ fi
 # Create agent dir
 mkdir -p /etc/netweak
 
-# Create logs dir
-mkdir -p /etc/netweak/logs
+# Create log dir
+mkdir -p /etc/netweak/log
 
 # Download agent
 echo -e "|   Downloading agent.sh to /etc/netweak\n|\n|   + $(wget -nv -o /dev/stdout -O /etc/netweak/agent.sh --no-check-certificate https://raw.github.com/netweak/agent/master/agent.sh)"
