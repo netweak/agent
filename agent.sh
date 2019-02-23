@@ -224,9 +224,9 @@ data_post="token=${auth[0]}&data=$(base "$version") $(base "$uptime") $(base "$s
 # API request with automatic termination
 if [ -n "$(command -v timeout)" ]
 then
-	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://beta.netweak.com/api/agent/report"
+	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://www.netweak.com/api/agent/report"
 else
-	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://beta.netweak.com/api/agent/report"
+	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://www.netweak.com/api/agent/report"
 	wget_pid=$!
 	wget_counter=0
 	wget_timeout=30
