@@ -4,12 +4,12 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Prepare output
-echo -e "|\n|   NetWeak Installer\n|   ===================\n|"
+echo -e "|\n|   Netweak Installer\n|   ===================\n|"
 
 # Check if user is root
 if [ $(id -u) != "0" ];
 then
-	echo -e "|   Error: You need to be root to install the NetWeak agent\n|"
+	echo -e "|   Error: You need to be root to install the Netweak agent\n|"
 	echo -e "|          The agent itself will NOT be running as root but instead under its own non-privileged user\n|"
 	exit 1
 fi
@@ -139,7 +139,7 @@ then
 	crontab -u netweak -l 2>/dev/null | { cat; echo "*/3 * * * * bash /etc/netweak/agent.sh > /etc/netweak/log/cron.log 2>&1"; } | crontab -u netweak -
 	
 	# Show success
-	echo -e "|\n|   Success: The NetWeak agent has been installed\n|"
+	echo -e "|\n|   Success: The Netweak agent has been installed\n|"
 	
 	# Attempt to delete installation script
 	if [ -f $0 ]
@@ -148,5 +148,5 @@ then
 	fi
 else
 	# Show error
-	echo -e "|\n|   Error: The NetWeak agent could not be installed\n|"
+	echo -e "|\n|   Error: The Netweak agent could not be installed\n|"
 fi
