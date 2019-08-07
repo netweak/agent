@@ -4,7 +4,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Agent version
-version="1.0.0"
+version="1.1.0"
 
 # API Token
 if [ -f /etc/netweak/token.conf ]
@@ -224,9 +224,9 @@ data_post="token=${auth[0]}&data=$(base "$version") $(base "$uptime") $(base "$s
 # API request with automatic termination
 if [ -n "$(command -v timeout)" ]
 then
-	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://www.netweak.com/api/agent/report"
+	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://api.netweak.com/agent/report"
 else
-	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://www.netweak.com/api/agent/report"
+	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://api.netweak.com/agent/report"
 	wget_pid=$!
 	wget_counter=0
 	wget_timeout=30
