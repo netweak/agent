@@ -1,8 +1,7 @@
 # Netweak Agent
 
-[![netweak.com](https://i.imgur.com/T3mr8d3.png)](https://www.netweak.com)
+[![netweak.com](https://netweak.com.test/img/logo/256h/logo-dark.png)](https://netweak.com)
 
-Netweak provides free linux server monitoring. [Create a free account](https://www.netweak.com)
-
+Netweak provides simple linux server monitoring. [Create a free account](https://netweak.com/register)
 
 The Netweak agent sends monitoring data from your linux server to our API on a regular basis. 
