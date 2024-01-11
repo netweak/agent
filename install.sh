@@ -120,6 +120,7 @@ mkdir -p /etc/netweak/log
 
 # Download agent
 echo -e "|   Downloading agent.sh to /etc/netweak\n|\n|   + $(curl -JLso /etc/netweak/agent.sh https://github.com/netweak/agent/raw/main/agent.sh)"
+echo -e "|   Downloading heartbeat.sh to /etc/netweak\n|\n|   + $(curl -JLso /etc/netweak/heartbeat.sh https://github.com/netweak/agent/raw/main/heartbeat.sh)"
 
 if [ -f /etc/netweak/agent.sh ]
 then
