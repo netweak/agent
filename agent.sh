@@ -4,7 +4,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Agent version
-version="1.1.0"
+version="1.2.0"
 
 # API Token
 if [ -f /etc/netweak/token.conf ]
