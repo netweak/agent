@@ -119,7 +119,7 @@ mkdir -p /etc/netweak
 mkdir -p /etc/netweak/log
 
 # Download agent
-echo -e "|   Downloading agent.sh to /etc/netweak\n|\n|   + $(curl -JLso /etc/netweak/agent.sh https://github.com/netweak/agent/raw/master/agent.sh)"
+echo -e "|   Downloading agent.sh to /etc/netweak\n|\n|   + $(curl -JLso /etc/netweak/agent.sh https://github.com/netweak/agent/raw/main/agent.sh)"
 
 if [ -f /etc/netweak/agent.sh ]
 then
@@ -136,6 +136,7 @@ then
 	chmod +s `type -p ping`
 
 	# Configure cron
+	crontab -u netweak -l 2>/dev/null | { cat; echo "* * * * * bash /etc/netweak/heartbeat.sh > /etc/netweak/log/cron.log 2>&1"; } | crontab -u netweak -
 	crontab -u netweak -l 2>/dev/null | { cat; echo "* * * * * bash /etc/netweak/agent.sh > /etc/netweak/log/cron.log 2>&1"; } | crontab -u netweak -
 	
 	# Show success
