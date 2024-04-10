@@ -140,6 +140,9 @@ then
 	crontab -u netweak -l 2>/dev/null | { cat; echo "* * * * * bash /etc/netweak/heartbeat.sh > /etc/netweak/log/cron.log 2>&1"; } | crontab -u netweak -
 	crontab -u netweak -l 2>/dev/null | { cat; echo "* * * * * bash /etc/netweak/agent.sh > /etc/netweak/log/cron.log 2>&1"; } | crontab -u netweak -
 	
+	# Initial run of agent
+	bash /etc/netweak/agent.sh
+
 	# Show success
 	echo -e "|\n|   Success: The Netweak agent has been installed\n|"
 	
