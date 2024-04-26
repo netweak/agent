@@ -115,23 +115,23 @@ then
 	cpu_freq=$(prep $(num "$(lscpu | grep 'CPU MHz' | awk -F\: '{ print $2 }' | sed -e 's/^ *//g' -e 's/ *$//g')"))
 fi
 
-# RAM usage
+# RAM usage (in MB)
 ram_total=$(prep $(num "$(cat /proc/meminfo | grep ^MemTotal: | awk '{ print $2 }')"))
 ram_free=$(prep $(num "$(cat /proc/meminfo | grep ^MemFree: | awk '{ print $2 }')"))
 ram_cached=$(prep $(num "$(cat /proc/meminfo | grep ^Cached: | awk '{ print $2 }')"))
 ram_buffers=$(prep $(num "$(cat /proc/meminfo | grep ^Buffers: | awk '{ print $2 }')"))
-ram_usage=$((($ram_total-($ram_free+$ram_cached+$ram_buffers))*1024))
-ram_total=$(($ram_total*1024))
+ram_usage=$((($ram_total-($ram_free+$ram_cached+$ram_buffers)) / 1024))
+ram_total=$(($ram_total / 1024))
 
-# Swap usage
+# Swap usage (in MB)
 swap_total=$(prep $(num "$(cat /proc/meminfo | grep ^SwapTotal: | awk '{ print $2 }')"))
 swap_free=$(prep $(num "$(cat /proc/meminfo | grep ^SwapFree: | awk '{ print $2 }')"))
-swap_usage=$((($swap_total-$swap_free)*1024))
-swap_total=$(($swap_total*1024))
+swap_usage=$((($swap_total-$swap_free) / 1024))
+swap_total=$(($swap_total / 1024))
 
-# Disk usage
-disk_total=$(prep $(num "$(($(df -P -B 1 | grep '^/' | awk '{ print $2 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
-disk_usage=$(prep $(num "$(($(df -P -B 1 | grep '^/' | awk '{ print $3 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
+# Disk usage (in MB)
+disk_total=$(prep $(num "$(($(df -P -B 1M | grep '^/' | awk '{ print $2 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
+disk_usage=$(prep $(num "$(($(df -P -B 1M | grep '^/' | awk '{ print $3 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
 
 # Disk array
 disk_array=$(prep "$(df -P -B 1 | grep '^/' | awk '{ print $1" "$2" "$3";" }' | sed -e :a -e '$!N;s/\n/ /;ta' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
@@ -145,7 +145,7 @@ else
 fi
 
 # Network interface
-nic=$(prep "$(ip route get 8.8.8.8 | grep dev | awk -F'dev' '{ print $2 }' | awk '{ print $1 }')")
+nic=$(prep "$(ip route get 1.1.1.1 | grep dev | awk -F'dev' '{ print $2 }' | awk '{ print $1 }')")
 
 if [ -z $nic ]
 then
