@@ -14,11 +14,29 @@ then
 	exit 1
 fi
 
-# Parameters required
+# Required parameter
 if [ $# -lt 1 ]
 then
 	echo -e "|   Usage: bash $0 'token'\n|"
 	exit 1
+fi
+
+# Exchange JIT token for agent token
+if [[ $1 == jit-* ]]; then
+	# POST request to retrieve token
+	response=$(curl -s -X POST -d "token=$1" https://api.netweak.com/agent/get-token)
+
+	# Check if there's an error
+	if [[ $? -ne 0 ]]; then
+		echo -e "|\n|   Error: Failed to retrieve token from API. Make sure your installation command is correct.\n|"
+		exit 1
+	fi
+
+	# Extracting token from response
+	token=$(echo "$response" | tr -d '\n')
+else
+	# Token doesn't start with "jit-", using it as is
+	token=$1
 fi
 
 # Check if crontab is installed
@@ -120,12 +138,14 @@ mkdir -p /etc/netweak/log
 
 # Download agent
 echo -e "|   Downloading agent.sh to /etc/netweak\n|\n|   + $(curl -JLso /etc/netweak/agent.sh https://github.com/netweak/agent/raw/main/agent.sh)"
+
+# Download heartbeat
 echo -e "|   Downloading heartbeat.sh to /etc/netweak\n|\n|   + $(curl -JLso /etc/netweak/heartbeat.sh https://github.com/netweak/agent/raw/main/heartbeat.sh)"
 
 if [ -f /etc/netweak/agent.sh ]
 then
 	# Create auth file
-	echo "$1" > /etc/netweak/token.conf
+	echo "$token" > /etc/netweak/token.conf
 	
 	# Create user
 	useradd netweak -r -d /etc/netweak -s /bin/false
