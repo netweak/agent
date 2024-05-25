@@ -130,8 +130,8 @@ swap_usage=$((($swap_total-$swap_free) * 1024))
 swap_total=$(($swap_total * 1024))
 
 # Disk usage (in bytes)
-disk_total=$(prep $(num "$(($(df -P -B 1 | grep '^/' | awk '{ print $2 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
-disk_usage=$(prep $(num "$(($(df -P -B 1 | grep '^/' | awk '{ print $3 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
+disk_total=$(prep $(num "$(($(df --output=size,source -B 1 | grep '/' | awk '{ print $1 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
+disk_usage=$(prep $(num "$(($(df --output=used,source -B 1 | grep '/' | awk '{ print $1 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
 
 # Disk array
 disk_array=$(prep "$(df -P -B 1 | grep '^/' | awk '{ print $1" "$2" "$3";" }' | sed -e :a -e '$!N;s/\n/ /;ta' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
