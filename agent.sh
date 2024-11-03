@@ -4,7 +4,8 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Get the directory name
-NETWEAK=$(basename $(dirname $0))
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+NETWEAK="$(basename "$SCRIPT_DIR")"
 
 # Agent version
 if [ -f "/etc/$NETWEAK/version" ]; then
