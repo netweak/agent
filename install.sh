@@ -171,20 +171,17 @@ if [ -z "$(ps -Al | grep cron | grep -v grep)" ]; then
 	fi
 fi
 
-# Change to temp directory
-cd /tmp || cd /
-
 # Attempt to delete previous agent
 if [ -f "/etc/$NETWEAK/agent.sh" ]; then
-    # Remove cron entry and user
-    if id -u "$NETWEAK" >/dev/null 2>&1; then
-        (crontab -u "$NETWEAK" -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u "$NETWEAK" - && userdel "$NETWEAK"
-    else
-        (crontab -u root -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u root -
-    fi
-    
-    # Then remove the directory
-    rm -Rf "/etc/$NETWEAK"
+	# Remove agent dir
+	rm -Rf "/etc/$NETWEAK"
+
+	# Remove cron entry and user
+	if id -u "$NETWEAK" > /dev/null 2>&1; then
+		(crontab -u "$NETWEAK" -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u "$NETWEAK" - && userdel "$NETWEAK"
+	else
+		(crontab -u root -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u root -
+	fi
 fi
 
 # Create agent dir
