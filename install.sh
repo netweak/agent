@@ -173,6 +173,8 @@ fi
 
 # Attempt to delete previous agent
 if [ -f "/etc/$NETWEAK/agent.sh" ]; then
+	echo -e "|   Removing previous agent\n|"
+
 	# Remove agent dir
 	rm -Rf "/etc/$NETWEAK"
 
