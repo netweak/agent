@@ -4,7 +4,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Default values
-VERSION="1.2.0"
+VERSION="1.2.1"
 ENDPOINT="https://api.netweak.com"
 BRANCH="main"
 NETWEAK="netweak"
