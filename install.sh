@@ -247,13 +247,6 @@ if [ -f "/etc/$NETWEAK/agent.sh" ]; then
 		echo "* * * * * bash /etc/$NETWEAK/agent.sh > /etc/$NETWEAK/log/cron.log 2>&1"
 	} | crontab -u "$NETWEAK" -
 
-	# Initial run of agent
-	if command -v runuser >/dev/null 2>&1; then
-		runuser -u "$NETWEAK" -- bash "/etc/$NETWEAK/agent.sh"
-	else
-		su -s /bin/bash -c "/etc/$NETWEAK/agent.sh" "$NETWEAK"
-	fi
-
 	# Show success
 	echo -e "|\n|   Success: The Netweak agent has been installed\n|"
 
