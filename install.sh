@@ -85,7 +85,7 @@ if ! [[ $BRANCH =~ ^[a-zA-Z0-9_.-]+$ ]]; then
 fi
 
 # Check for curl
-if ! command -v curl > /dev/null 2>&1; then
+if ! command -v curl >/dev/null 2>&1; then
 	echo -e "|\n|   Error: curl is required but not installed\n|"
 	exit 1
 fi
@@ -177,7 +177,7 @@ if [ -f "/etc/$NETWEAK/agent.sh" ]; then
 	rm -Rf "/etc/$NETWEAK"
 
 	# Remove cron entry and user
-	if id -u "$NETWEAK" > /dev/null 2>&1; then
+	if id -u "$NETWEAK" >/dev/null 2>&1; then
 		(crontab -u "$NETWEAK" -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u "$NETWEAK" - && userdel "$NETWEAK"
 	else
 		(crontab -u root -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u root -
@@ -248,7 +248,11 @@ if [ -f "/etc/$NETWEAK/agent.sh" ]; then
 	} | crontab -u "$NETWEAK" -
 
 	# Initial run of agent
-	bash "/etc/$NETWEAK/agent.sh"
+	if command -v runuser >/dev/null 2>&1; then
+		runuser -u "$NETWEAK" -- bash "/etc/$NETWEAK/agent.sh"
+	else
+		su -s /bin/bash -c "/etc/$NETWEAK/agent.sh" "$NETWEAK"
+	fi
 
 	# Show success
 	echo -e "|\n|   Success: The Netweak agent has been installed\n|"
