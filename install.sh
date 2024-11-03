@@ -85,7 +85,7 @@ if ! [[ $BRANCH =~ ^[a-zA-Z0-9_.-]+$ ]]; then
 fi
 
 # Check for curl
-if ! command -v curl >/dev/null 2>&1; then
+if ! command -v curl > /dev/null 2>&1; then
 	echo -e "|\n|   Error: curl is required but not installed\n|"
 	exit 1
 fi
@@ -171,17 +171,20 @@ if [ -z "$(ps -Al | grep cron | grep -v grep)" ]; then
 	fi
 fi
 
+# Change to temp directory
+cd /tmp || cd /
+
 # Attempt to delete previous agent
 if [ -f "/etc/$NETWEAK/agent.sh" ]; then
-	# Remove agent dir
-	rm -Rf "/etc/$NETWEAK"
-
-	# Remove cron entry and user
-	if id -u "$NETWEAK" > /dev/null 2>&1; then
-		(crontab -u "$NETWEAK" -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u "$NETWEAK" - && userdel "$NETWEAK"
-	else
-		(crontab -u root -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u root -
-	fi
+    # Remove cron entry and user
+    if id -u "$NETWEAK" >/dev/null 2>&1; then
+        (crontab -u "$NETWEAK" -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u "$NETWEAK" - && userdel "$NETWEAK"
+    else
+        (crontab -u root -l | grep -v "/etc/$NETWEAK/agent.sh") | crontab -u root -
+    fi
+    
+    # Then remove the directory
+    rm -Rf "/etc/$NETWEAK"
 fi
 
 # Create agent dir
