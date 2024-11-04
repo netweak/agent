@@ -182,63 +182,45 @@ then
 	cpu_gap=$(($cpu-${data[1]}))
 	io_gap=$(($io-${data[2]}))
 	idle_gap=$(($idle-${data[3]}))
-
-	if [[ $cpu_gap > "0" ]]
-	then
-		load_cpu=$(((1000*($cpu_gap-$idle_gap)/$cpu_gap+5)/10))
-	fi
-
-	if [[ $io_gap > "0" ]]
-	then
-		load_io=$(((1000*($io_gap-$idle_gap)/$io_gap+5)/10))
-	fi
-
-	if [[ $rx > ${data[4]} ]]
-	then
-		rx_gap=$(($rx-${data[4]}))
-	fi
-
-	if [[ $tx > ${data[5]} ]]
-	then
-		tx_gap=$(($tx-${data[5]}))
-	fi
+	load_cpu=$(((1000*($cpu_gap-$idle_gap)/$cpu_gap+5)/10))
+	load_io=$(((1000*($io_gap-$idle_gap)/$cpu_gap+5)/10))
 fi
 
-# System load cache
-echo "$time $cpu $io $idle $rx $tx" > /etc/netweak/cache
+echo "$time $cpu $io $idle" > /etc/netweak/cache
 
-# Prepare load variables
-rx_gap=$(prep $(num "$rx_gap"))
-tx_gap=$(prep $(num "$tx_gap"))
-load_cpu=$(prep $(num "$load_cpu"))
-load_io=$(prep $(num "$load_io"))
-
-# Get network latency
-ping_eu=$(prep $(num "$(ping -c 2 -w 2 ping-eu.netweak.com | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')"))
-ping_us=$(prep $(num "$(ping -c 2 -w 2 ping-us.netweak.com | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')"))
-ping_as=$(prep $(num "$(ping -c 2 -w 2 ping-as.netweak.com | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')"))
+# Ping to external servers
+ping_eu=$(prep $(int "$(ping -c 1 -w 1 ping.online.net | grep time= | awk '{ print $8 }' | cut -d= -f2)"))
+ping_us=$(prep $(int "$(ping -c 1 -w 1 ping.chi.att.com | grep time= | awk '{ print $8 }' | cut -d= -f2)"))
+ping_as=$(prep $(int "$(ping -c 1 -w 1 mirror.hk.leaseweb.net | grep time= | awk '{ print $8 }' | cut -d= -f2)"))
 
 # Build data for post
 data_post="token=${auth[0]}&data=$(base "$version") $(base "$uptime") $(base "$sessions") $(base "$processes") $(base "$processes_array") $(base "$file_handles") $(base "$file_handles_limit") $(base "$os_kernel") $(base "$os_name") $(base "$os_arch") $(base "$cpu_name") $(base "$cpu_cores") $(base "$cpu_freq") $(base "$ram_total") $(base "$ram_usage") $(base "$swap_total") $(base "$swap_usage") $(base "$disk_array") $(base "$disk_total") $(base "$disk_usage") $(base "$connections") $(base "$nic") $(base "$ipv4") $(base "$ipv6") $(base "$rx") $(base "$tx") $(base "$rx_gap") $(base "$tx_gap") $(base "$load") $(base "$load_cpu") $(base "$load_io") $(base "$ping_eu") $(base "$ping_us") $(base "$ping_as")"
 
-# API request with automatic termination
+# Write data_post to a temporary file
+tmp_file=$(mktemp)
+echo "$data_post" > "$tmp_file"
+
+# API request with automatic termination, using --post-file
 if [ -n "$(command -v timeout)" ]
 then
-	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://api.netweak.com/agent/report"
+    timeout -s SIGKILL 30 wget -q -o /etc/netweak/log/agent.log -T 25 --post-file="$tmp_file" --no-check-certificate "https://api.netweak.com/agent/report"
 else
-	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://api.netweak.com/agent/report"
-	wget_pid=$!
-	wget_counter=0
-	wget_timeout=30
+    wget -q -o /etc/netweak/log/agent.log -T 25 --post-file="$tmp_file" --no-check-certificate "https://api.netweak.com/agent/report"
+    wget_pid=$!
+    wget_counter=0
+    wget_timeout=30
 
-	while kill -0 "$wget_pid" && (( wget_counter < wget_timeout ))
-	do
-	    sleep 1
-	    (( wget_counter++ ))
-	done
+    while kill -0 "$wget_pid" && (( wget_counter < wget_timeout ))
+    do
+        sleep 1
+        (( wget_counter++ ))
+    done
 
-	kill -0 "$wget_pid" && kill -s SIGKILL "$wget_pid"
+    kill -0 "$wget_pid" && kill -s SIGKILL "$wget_pid"
 fi
+
+# Clean up temporary file
+rm -f "$tmp_file"
 
 # Finished
 exit 1
