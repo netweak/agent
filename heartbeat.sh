@@ -18,9 +18,9 @@ data_post="token=${auth[0]}"
 # API request with automatic termination
 if [ -n "$(command -v timeout)" ]
 then
-	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://api.netweak.com/agent/heartbeat"
+	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" "https://api.netweak.com/agent/heartbeat"
 else
-	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" --no-check-certificate "https://api.netweak.com/agent/heartbeat"
+	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" "https://api.netweak.com/agent/heartbeat"
 	wget_pid=$!
 	wget_counter=0
 	wget_timeout=30
