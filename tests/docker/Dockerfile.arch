@@ -1,0 +1,14 @@
+FROM archlinux:latest
+
+RUN pacman -Syu --noconfirm \
+    bash curl wget cronie git sudo python3 \
+    procps-ng iproute2 iputils net-tools coreutils util-linux \
+    && pacman -Scc --noconfirm
+
+# Install BATS
+RUN git clone --depth 1 https://github.com/bats-core/bats-core.git /opt/bats-core && \
+    /opt/bats-core/install.sh /usr/local && \
+    rm -rf /opt/bats-core
+
+WORKDIR /app
+COPY . .

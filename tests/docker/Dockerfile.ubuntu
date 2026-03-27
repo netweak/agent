@@ -1,0 +1,19 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    bash curl wget cron git sudo python3 \
+    procps iproute2 iputils-ping net-tools coreutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install BATS
+RUN git clone --depth 1 https://github.com/bats-core/bats-core.git /opt/bats-core && \
+    /opt/bats-core/install.sh /usr/local && \
+    rm -rf /opt/bats-core
+
+# Start cron for lifecycle tests
+RUN service cron start || true
+
+WORKDIR /app
+COPY . .

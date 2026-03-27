@@ -1,62 +1,102 @@
 #!/bin/bash
+# shellcheck disable=SC1090,SC1001
 
-# Set env
+# Ensure consistent PATH
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Get the directory name
+# Determine script and install directories
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-NETWEAK="$(basename "$SCRIPT_DIR")"
+INSTALL_PATH="$(basename "$SCRIPT_DIR")"
 
-# Agent version
-if [ -f "/etc/$NETWEAK/version" ]; then
-	version=$(cat "/etc/$NETWEAK/version")
-else
-	echo "Error: File /etc/$NETWEAK/version is missing."
+# Source shared functions
+source "$SCRIPT_DIR/lib.sh"
+
+# Allow overriding /proc path for testing
+PROC_DIR="${PROC_DIR:-/proc}"
+
+# Prevent concurrent agent runs via flock
+LOCK_FILE="/etc/$INSTALL_PATH/agent.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+	exit 0
 fi
 
-# Get endpoint
-if [ -f "/etc/$NETWEAK/endpoint.conf" ]; then
-	ENDPOINT=$(cat "/etc/$NETWEAK/endpoint.conf")
+# Read config
+if [ -f "/etc/$INSTALL_PATH/config.conf" ]; then
+	source "/etc/$INSTALL_PATH/config.conf"
 else
-	ENDPOINT="https://api.netweak.com"
-fi
-
-# API Token
-if [ -f "/etc/$NETWEAK/token.conf" ]; then
-	auth=($(cat "/etc/$NETWEAK/token.conf"))
-else
-	echo "Error: File /etc/$NETWEAK/token.conf is missing."
+	echo "Error: File /etc/$INSTALL_PATH/config.conf is missing." >&2
 	exit 1
 fi
 
-# Prepare values
-function prep() {
-	echo "$1" | sed -e 's/^ *//g' -e 's/ *$//g' | sed -n '1 p'
+# Set defaults
+ENDPOINT="${endpoint:-https://api.netweak.com}"
+DEBUG="${debug:-0}"
+# shellcheck disable=SC2154
+auth="$token"
+
+# Log directory
+LOG_DIR="/etc/$INSTALL_PATH/log"
+LOG_FILE="$LOG_DIR/agent.log"
+MAX_LOG_SIZE=1048576 # 1MB
+
+# Rotate log if it exceeds max size
+if [ -f "$LOG_FILE" ] && [ "$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null)" -gt "$MAX_LOG_SIZE" ] 2>/dev/null; then
+	tail -n 500 "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
+fi
+
+# Logging
+log() {
+	echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
 }
 
-# Base64 values
-function base() {
-	echo "$1" | tr -d '\n' | base64 | tr -d '=' | tr -d '\n' | sed 's/\//%2F/g' | sed 's/\+/%2B/g'
+# shellcheck disable=SC2329
+log_error() {
+	echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$LOG_FILE" "$LOG_DIR/error.log" >&2
 }
 
-# Integer values
-function int() {
-	echo ${1/\.*/}
+debug_log() {
+	if [ "$DEBUG" -eq 1 ]; then
+		echo "[DEBUG] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
+	fi
 }
 
-# Filter numeric
-function num() {
-	case $1 in
-	'' | *[!0-9\.]*) echo 0 ;;
-	*) echo $1 ;;
-	esac
+# Send an API request with automatic termination
+api_request() {
+	local url="$1"
+	local payload="$2"
+
+	debug_log "Sending request to $url"
+	if [ -n "$(command -v timeout)" ]; then
+		timeout -s SIGKILL 30 wget -q -o /dev/null -O /dev/null -T 25 --post-data "$payload" --header="Content-Type: application/json" "$url"
+	else
+		wget -q -o /dev/null -O /dev/null -T 25 --post-data "$payload" --header="Content-Type: application/json" "$url" &
+		local wget_pid=$!
+		local wget_counter=0
+		local wget_timeout=30
+
+		while kill -0 "$wget_pid" 2>/dev/null && (( wget_counter < wget_timeout )); do
+			sleep 1
+			(( wget_counter++ ))
+		done
+
+		kill -0 "$wget_pid" 2>/dev/null && kill -s SIGKILL "$wget_pid"
+	fi
 }
+
+log "Agent started"
+debug_log "Endpoint: $ENDPOINT"
+
+# Send heartbeat first (lightweight, so the server knows we're alive)
+debug_log "Sending heartbeat"
+api_request "$ENDPOINT/agent/heartbeat" "{\"token\":\"${token}\",\"timestamp\":$(date +%s)}"
+debug_log "Heartbeat sent"
 
 # Agent version
-version=$(prep "$version")
+version=$(prep "${version:-}")
 
 # System uptime
-uptime=$(prep $(int "$(cat /proc/uptime | awk '{ print $1 }')"))
+uptime=$(int "$(awk '{ print $1 }' "$PROC_DIR/uptime")")
 
 # Login session count
 sessions=$(prep "$(who | wc -l)")
@@ -66,17 +106,17 @@ processes=$(prep "$(ps axc | wc -l)")
 
 # Process array
 processes_array="$(ps axc -o uname:12,pcpu,rss,cmd --sort=-pcpu,-rss --noheaders --width 120)"
-processes_array="$(echo "$processes_array" | grep -v " ps$" | sed 's/ \+ / /g' | sed '/^$/d' | tr "\n" ";")"
+processes_array="$(echo "$processes_array" | grep -v " ps$" | sed 's/ \+ / /g; /^$/d' | tr "\n" ";")"
 
 # File descriptors
-file_handles=$(prep $(num "$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')"))
-file_handles_limit=$(prep $(num "$(cat /proc/sys/fs/file-nr | awk '{ print $3 }')"))
+file_handles=$(num "$(awk '{ print $1 }' "$PROC_DIR/sys/fs/file-nr")")
+file_handles_limit=$(num "$(awk '{ print $3 }' "$PROC_DIR/sys/fs/file-nr")")
 
 # OS details
 os_kernel=$(prep "$(uname -r)")
 
 if ls /etc/*release >/dev/null 2>&1; then
-	os_name=$(prep "$(cat /etc/*release | grep '^PRETTY_NAME=\|^NAME=\|^DISTRIB_ID=' | awk -F\= '{ print $2 }' | tr -d '"' | tac)")
+	os_name=$(prep "$(grep '^PRETTY_NAME=\|^NAME=\|^DISTRIB_ID=' /etc/*release | awk -F\= '{ print $2 }' | tr -d '"' | tac)")
 fi
 
 if [ -z "$os_name" ]; then
@@ -93,10 +133,10 @@ fi
 
 case $(uname -m) in
 x86_64)
-	os_arch=$(prep "x64")
+	os_arch="x64"
 	;;
 i*86)
-	os_arch=$(prep "x86")
+	os_arch="x86"
 	;;
 *)
 	os_arch=$(prep "$(uname -m)")
@@ -104,134 +144,163 @@ i*86)
 esac
 
 # CPU details
-cpu_name=$(prep "$(cat /proc/cpuinfo | grep 'model name' | awk -F\: '{ print $2 }')")
-cpu_cores=$(prep "$(($(cat /proc/cpuinfo | grep 'model name' | awk -F\: '{ print $2 }' | sed -e :a -e '$!N;s/\n/\|/;ta' | tr -cd \| | wc -c) + 1))")
+cpu_name=$(prep "$(grep 'model name' "$PROC_DIR/cpuinfo" | awk -F\: '{ print $2 }')")
+cpu_cores=$(grep -c 'model name' "$PROC_DIR/cpuinfo")
 
 if [ -z "$cpu_name" ]; then
-	cpu_name=$(prep "$(cat /proc/cpuinfo | grep 'vendor_id' | awk -F\: '{ print $2 } END { if (!NR) print "N/A" }')")
-	cpu_cores=$(prep "$(($(cat /proc/cpuinfo | grep 'vendor_id' | awk -F\: '{ print $2 }' | sed -e :a -e '$!N;s/\n/\|/;ta' | tr -cd \| | wc -c) + 1))")
+	cpu_name=$(prep "$(grep 'vendor_id' "$PROC_DIR/cpuinfo" | awk -F\: '{ print $2 } END { if (!NR) print "N/A" }')")
+	cpu_cores=$(grep -c 'vendor_id' "$PROC_DIR/cpuinfo")
 fi
 
-cpu_freq=$(prep "$(cat /proc/cpuinfo | grep 'cpu MHz' | awk -F\: '{ print $2 }')")
+cpu_freq=$(prep "$(grep 'cpu MHz' "$PROC_DIR/cpuinfo" | awk -F\: '{ print $2 }')")
 
 if [ -z "$cpu_freq" ]; then
-	cpu_freq=$(prep $(num "$(lscpu | grep 'CPU MHz' | awk -F\: '{ print $2 }' | sed -e 's/^ *//g' -e 's/ *$//g')"))
+	cpu_freq=$(num "$(lscpu | grep 'CPU MHz' | awk -F\: '{ print $2 }' | sed 's/^ *//; s/ *$//')")
 fi
 
 # RAM usage (in bytes)
-ram_total=$(prep $(num "$(cat /proc/meminfo | grep ^MemTotal: | awk '{ print $2 }')"))
-ram_free=$(prep $(num "$(cat /proc/meminfo | grep ^MemFree: | awk '{ print $2 }')"))
-ram_cached=$(prep $(num "$(cat /proc/meminfo | grep ^Cached: | awk '{ print $2 }')"))
-ram_buffers=$(prep $(num "$(cat /proc/meminfo | grep ^Buffers: | awk '{ print $2 }')"))
-ram_usage=$((($ram_total - ($ram_free + $ram_cached + $ram_buffers)) * 1024))
-ram_total=$(($ram_total * 1024))
+ram_total=$(num "$(grep ^MemTotal: "$PROC_DIR/meminfo" | awk '{ print $2 }')")
+ram_free=$(num "$(grep ^MemFree: "$PROC_DIR/meminfo" | awk '{ print $2 }')")
+ram_cached=$(num "$(grep ^Cached: "$PROC_DIR/meminfo" | awk '{ print $2 }')")
+ram_buffers=$(num "$(grep ^Buffers: "$PROC_DIR/meminfo" | awk '{ print $2 }')")
+ram_usage=$(( (ram_total - (ram_free + ram_cached + ram_buffers)) * 1024 ))
+ram_total=$(( ram_total * 1024 ))
 
 # Swap usage (in bytes)
-swap_total=$(prep $(num "$(cat /proc/meminfo | grep ^SwapTotal: | awk '{ print $2 }')"))
-swap_free=$(prep $(num "$(cat /proc/meminfo | grep ^SwapFree: | awk '{ print $2 }')"))
-swap_usage=$((($swap_total - $swap_free) * 1024))
-swap_total=$(($swap_total * 1024))
+swap_total=$(num "$(grep ^SwapTotal: "$PROC_DIR/meminfo" | awk '{ print $2 }')")
+swap_free=$(num "$(grep ^SwapFree: "$PROC_DIR/meminfo" | awk '{ print $2 }')")
+swap_usage=$(( (swap_total - swap_free) * 1024 ))
+swap_total=$(( swap_total * 1024 ))
 
 # Disk usage (in bytes)
-disk_total=$(prep $(num "$(($(df --output=size,source -B 1 | grep ' /' | awk '{ print $1 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
-disk_usage=$(prep $(num "$(($(df --output=used,source -B 1 | grep ' /' | awk '{ print $1 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
+disk_total=$(num "$(($(df --output=size,source -B 1 | grep ' /' | awk '{ print $1 }' | sed -e :a -e '$!N;s/\n/+/;ta')))")
+disk_usage=$(num "$(($(df --output=used,source -B 1 | grep ' /' | awk '{ print $1 }' | sed -e :a -e '$!N;s/\n/+/;ta')))")
 
 # Disk array
 disk_array=$(prep "$(df -P -B 1 | grep '^/' | awk '{ print $1" "$2" "$3";" }' | sed -e :a -e '$!N;s/\n/ /;ta' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
 
 # Active connections
 if [ -n "$(command -v ss)" ]; then
-	connections=$(prep $(num "$(ss -tun | tail -n +2 | wc -l)"))
+	connections=$(num "$(ss -tun | tail -n +2 | wc -l)")
 else
-	connections=$(prep $(num "$(netstat -tun | tail -n +3 | wc -l)"))
+	connections=$(num "$(netstat -tun | tail -n +3 | wc -l)")
 fi
 
 # Network interface
 nic=$(prep "$(ip route get 1.1.1.1 | grep dev | awk -F'dev' '{ print $2 }' | awk '{ print $1 }')")
 
-if [ -z $nic ]; then
+if [ -z "$nic" ]; then
 	nic=$(prep "$(ip link show | grep 'eth[0-9]' | awk '{ print $2 }' | tr -d ':')")
 fi
 
 # IP addresses and network usage
-ipv4=$(prep "$(ip addr show $nic | grep 'inet ' | awk '{ print $2 }' | awk -F\/ '{ print $1 }' | grep -v '^127' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
-ipv6=$(prep "$(ip addr show $nic | grep 'inet6 ' | awk '{ print $2 }' | awk -F\/ '{ print $1 }' | grep -v '^::' | grep -v '^0000:' | grep -v '^fe80:' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
+ipv4=$(prep "$(ip addr show "$nic" | grep 'inet ' | awk '{ print $2 }' | awk -F\/ '{ print $1 }' | grep -v '^127' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
+ipv6=$(prep "$(ip addr show "$nic" | grep 'inet6 ' | awk '{ print $2 }' | awk -F\/ '{ print $1 }' | grep -v '^::' | grep -v '^0000:' | grep -v '^fe80:' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
 
-if [ -d /sys/class/net/$nic/statistics ]; then
-	rx=$(prep $(num "$(cat /sys/class/net/$nic/statistics/rx_bytes)"))
-	tx=$(prep $(num "$(cat /sys/class/net/$nic/statistics/tx_bytes)"))
+if [ -d "/sys/class/net/$nic/statistics" ]; then
+	read -r rx < "/sys/class/net/$nic/statistics/rx_bytes"
+	read -r tx < "/sys/class/net/$nic/statistics/tx_bytes"
 else
-	rx=$(prep $(num "$(ip -s link show $nic | grep '[0-9]*' | grep -v '[A-Za-z]' | awk '{ print $1 }' | sed -n '1 p')"))
-	tx=$(prep $(num "$(ip -s link show $nic | grep '[0-9]*' | grep -v '[A-Za-z]' | awk '{ print $1 }' | sed -n '2 p')"))
+	rx=$(num "$(ip -s link show "$nic" | grep '[0-9]*' | grep -v '[A-Za-z]' | awk '{ print $1 }' | sed -n '1 p')")
+	tx=$(num "$(ip -s link show "$nic" | grep '[0-9]*' | grep -v '[A-Za-z]' | awk '{ print $1 }' | sed -n '2 p')")
 fi
 
 # Average system load
-load=$(prep "$(cat /proc/loadavg | awk '{ print $1" "$2" "$3 }')")
+load=$(prep "$(awk '{ print $1" "$2" "$3 }' "$PROC_DIR/loadavg")")
 
 # Detailed system load calculation
 time=$(date +%s)
-stat=($(cat /proc/stat | head -n1 | sed 's/[^0-9 ]*//g' | sed 's/^ *//'))
-cpu=$((${stat[0]} + ${stat[1]} + ${stat[2]} + ${stat[3]}))
-io=$((${stat[3]} + ${stat[4]}))
+read -ra stat <<< "$(head -n1 "$PROC_DIR/stat" | sed 's/[^0-9 ]*//g; s/^ *//')"
+cpu=$(( stat[0] + stat[1] + stat[2] + stat[3] ))
+io=$(( stat[3] + stat[4] ))
 idle=${stat[3]}
 
-if [ -e "/etc/$NETWEAK/cache" ]; then
-	data=($(cat "/etc/$NETWEAK/cache"))
-	interval=$(($time - ${data[0]}))
-	cpu_gap=$(($cpu - ${data[1]}))
-	io_gap=$(($io - ${data[2]}))
-	idle_gap=$(($idle - ${data[3]}))
+if [ -e "/etc/$INSTALL_PATH/cache" ]; then
+	read -ra data < "/etc/$INSTALL_PATH/cache"
+	# shellcheck disable=SC2034
+	interval=$(( time - data[0] ))
+	cpu_gap=$(( cpu - data[1] ))
+	io_gap=$(( io - data[2] ))
+	idle_gap=$(( idle - data[3] ))
 
-	if [[ $cpu_gap > "0" ]]; then
-		load_cpu=$(((1000 * ($cpu_gap - $idle_gap) / $cpu_gap + 5) / 10))
+	if (( cpu_gap > 0 )); then
+		load_cpu=$(( (1000 * (cpu_gap - idle_gap) / cpu_gap + 5) / 10 ))
 	fi
 
-	if [[ $io_gap > "0" ]]; then
-		load_io=$(((1000 * ($io_gap - $idle_gap) / $io_gap + 5) / 10))
+	if (( io_gap > 0 )); then
+		load_io=$(( (1000 * (io_gap - idle_gap) / io_gap + 5) / 10 ))
 	fi
 
-	if [[ $rx > ${data[4]} ]]; then
-		rx_gap=$(($rx - ${data[4]}))
+	if (( rx > data[4] )); then
+		rx_gap=$(( rx - data[4] ))
 	fi
 
-	if [[ $tx > ${data[5]} ]]; then
-		tx_gap=$(($tx - ${data[5]}))
+	if (( tx > data[5] )); then
+		tx_gap=$(( tx - data[5] ))
 	fi
 fi
 
-# System load cache
-echo "$time $cpu $io $idle $rx $tx" >"/etc/$NETWEAK/cache"
+# Cache current values for next-run delta calculations
+echo "$time $cpu $io $idle $rx $tx" >"/etc/$INSTALL_PATH/cache"
 
 # Prepare load variables
-rx_gap=$(prep $(num "$rx_gap"))
-tx_gap=$(prep $(num "$tx_gap"))
-load_cpu=$(prep $(num "$load_cpu"))
-load_io=$(prep $(num "$load_io"))
+rx_gap=$(num "$rx_gap")
+tx_gap=$(num "$tx_gap")
+load_cpu=$(num "$load_cpu")
+load_io=$(num "$load_io")
 
-# Get network latency
-ping_eu=$(prep $(num "$(ping -c 2 -w 2 ping-eu.netweak.com | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')"))
-ping_us=$(prep $(num "$(ping -c 2 -w 2 ping-us.netweak.com | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')"))
-ping_as=$(prep $(num "$(ping -c 2 -w 2 ping-as.netweak.com | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')"))
+# Network latency
+ping_eu=$(num "$(timeout 10 ping -c 2 -w 2 ping-eu.netweak.com 2>/dev/null | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')")
+ping_us=$(num "$(timeout 10 ping -c 2 -w 2 ping-us.netweak.com 2>/dev/null | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')")
+ping_as=$(num "$(timeout 10 ping -c 2 -w 2 ping-as.netweak.com 2>/dev/null | grep rtt | cut -d'/' -f4 | awk '{ print $3 }')")
 
-# Build data for post
-data_post="token=${auth[0]}&data=$(base "$version") $(base "$uptime") $(base "$sessions") $(base "$processes") $(base "$processes_array") $(base "$file_handles") $(base "$file_handles_limit") $(base "$os_kernel") $(base "$os_name") $(base "$os_arch") $(base "$cpu_name") $(base "$cpu_cores") $(base "$cpu_freq") $(base "$ram_total") $(base "$ram_usage") $(base "$swap_total") $(base "$swap_usage") $(base "$disk_array") $(base "$disk_total") $(base "$disk_usage") $(base "$connections") $(base "$nic") $(base "$ipv4") $(base "$ipv6") $(base "$rx") $(base "$tx") $(base "$rx_gap") $(base "$tx_gap") $(base "$load") $(base "$load_cpu") $(base "$load_io") $(base "$ping_eu") $(base "$ping_us") $(base "$ping_as")"
+# Build JSON payload
+data_post=$(cat <<EOF
+{
+	"token": "$(json_str "$auth")",
+	"timestamp": $(date +%s),
+	"version": "$(json_str "$version")",
+	"uptime": $uptime,
+	"sessions": $sessions,
+	"processes": $processes,
+	"processes_array": "$(json_str "$processes_array")",
+	"file_handles": $file_handles,
+	"file_handles_limit": $file_handles_limit,
+	"os_kernel": "$(json_str "$os_kernel")",
+	"os_name": "$(json_str "$os_name")",
+	"os_arch": "$(json_str "$os_arch")",
+	"cpu_name": "$(json_str "$cpu_name")",
+	"cpu_cores": $cpu_cores,
+	"cpu_freq": "$cpu_freq",
+	"ram_total": $ram_total,
+	"ram_usage": $ram_usage,
+	"swap_total": $swap_total,
+	"swap_usage": $swap_usage,
+	"disk_array": "$(json_str "$disk_array")",
+	"disk_total": $disk_total,
+	"disk_usage": $disk_usage,
+	"connections": $connections,
+	"nic": "$(json_str "$nic")",
+	"ipv4": "$(json_str "$ipv4")",
+	"ipv6": "$(json_str "$ipv6")",
+	"rx": $rx,
+	"tx": $tx,
+	"rx_gap": $rx_gap,
+	"tx_gap": $tx_gap,
+	"load": "$(json_str "$load")",
+	"load_cpu": $load_cpu,
+	"load_io": $load_io,
+	"ping_eu": "$ping_eu",
+	"ping_us": "$ping_us",
+	"ping_as": "$ping_as"
+}
+EOF
+)
 
-# API request with automatic termination
-if [ -n "$(command -v timeout)" ]; then
-	timeout -s SIGKILL 30 wget -q -o /dev/null -O "/etc/$NETWEAK/log/agent.log" -T 25 --post-data "$data_post" --no-check-certificate "$ENDPOINT/agent/report"
-else
-	wget -q -o /dev/null -O "/etc/$NETWEAK/log/agent.log" -T 25 --post-data "$data_post" --no-check-certificate "$ENDPOINT/agent/report"
-	wget_pid=$!
-	wget_counter=0
-	wget_timeout=30
-
-	while kill -0 "$wget_pid" && ((wget_counter < wget_timeout)); do
-		sleep 1
-		((wget_counter++))
-	done
-
-	kill -0 "$wget_pid" && kill -s SIGKILL "$wget_pid"
-fi
+# Send report
+debug_log "Payload: $data_post"
+api_request "$ENDPOINT/agent/report" "$data_post"
 
 # Finished
-exit 1
+log "Agent finished"
+exit 0

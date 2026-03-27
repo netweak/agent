@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck
+        run: shellcheck agent.sh lib.sh install.sh uninstall.sh update.sh
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install BATS
+        run: sudo tests/bats-core/install.sh /usr/local
+      - name: Run unit tests
+        run: bats tests/unit/
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Build test image
+        run: docker build -f tests/docker/Dockerfile.ubuntu -t netweak-test .
+      - name: Run integration tests
+        run: docker run --rm netweak-test bats tests/integration/
+
+  security-tests:
+    name: Security Tests (unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install BATS
+        run: sudo tests/bats-core/install.sh /usr/local
+      - name: Run JSON escape tests
+        run: bats tests/security/test_json_escape.bats
+
+  security-tests-docker:
+    name: Security Tests (permissions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Build test image
+        run: docker build -f tests/docker/Dockerfile.ubuntu -t netweak-test .
+      - name: Run permission tests
+        run: docker run --rm netweak-test bats tests/security/test_permissions.bats
+
+  lifecycle-tests:
+    name: Lifecycle Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [ubuntu, centos, arch]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Build test image
+        env:
+          DISTRO: ${{ matrix.distro }}
+        run: docker build -f "tests/docker/Dockerfile.${DISTRO}" -t "netweak-${DISTRO}" .
+      - name: Run lifecycle tests
+        env:
+          DISTRO: ${{ matrix.distro }}
+        run: docker run --rm "netweak-${DISTRO}" bats tests/lifecycle/

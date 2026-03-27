@@ -1,0 +1,17 @@
+FROM rockylinux:9
+
+RUN dnf install -y \
+    bash curl wget cronie git sudo python3 \
+    procps-ng iproute iputils net-tools coreutils util-linux \
+    && dnf clean all
+
+# Install BATS
+RUN git clone --depth 1 https://github.com/bats-core/bats-core.git /opt/bats-core && \
+    /opt/bats-core/install.sh /usr/local && \
+    rm -rf /opt/bats-core
+
+# Start crond for lifecycle tests
+RUN crond || true
+
+WORKDIR /app
+COPY . .
