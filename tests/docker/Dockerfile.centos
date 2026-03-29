@@ -10,8 +10,8 @@ RUN git clone --depth 1 https://github.com/bats-core/bats-core.git /opt/bats-cor
     /opt/bats-core/install.sh /usr/local && \
     rm -rf /opt/bats-core
 
-# Start crond for lifecycle tests
-RUN crond || true
-
 WORKDIR /app
 COPY . .
+
+# Start crond at runtime (service/systemctl don't work in Docker)
+ENTRYPOINT ["bash", "-c", "crond && exec \"$@\"", "--"]

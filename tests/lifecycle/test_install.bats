@@ -125,10 +125,12 @@ run_install() {
 }
 
 @test "install: fails without root" {
-	# Run as non-root user
-	run su -s /bin/bash nobody -c "bash $PROJECT_DIR/install.sh test-token 2>&1"
+	# Create a non-root test user (nobody may be expired on some distros)
+	useradd -r -s /bin/bash netweak-testuser 2>/dev/null || true
+	run su -s /bin/bash netweak-testuser -c "bash $PROJECT_DIR/install.sh test-token 2>&1"
 	assert_failure
 	assert_output --partial "root"
+	userdel netweak-testuser 2>/dev/null || true
 }
 
 @test "install: fails without token" {

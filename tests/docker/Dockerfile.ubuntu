@@ -12,8 +12,8 @@ RUN git clone --depth 1 https://github.com/bats-core/bats-core.git /opt/bats-cor
     /opt/bats-core/install.sh /usr/local && \
     rm -rf /opt/bats-core
 
-# Start cron for lifecycle tests
-RUN service cron start || true
-
 WORKDIR /app
 COPY . .
+
+# Start cron at runtime (service doesn't persist across RUN layers)
+ENTRYPOINT ["bash", "-c", "cron && exec \"$@\"", "--"]

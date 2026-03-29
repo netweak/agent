@@ -12,3 +12,6 @@ RUN git clone --depth 1 https://github.com/bats-core/bats-core.git /opt/bats-cor
 
 WORKDIR /app
 COPY . .
+
+# Start crond at runtime (systemctl doesn't work in Docker)
+ENTRYPOINT ["bash", "-c", "crond && exec \"$@\"", "--"]
