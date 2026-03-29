@@ -44,9 +44,11 @@ teardown() {
 }
 
 run_install() {
+	local tmp_installer="/tmp/netweak_test_install.sh"
+	cp "$PROJECT_DIR/install.sh" "$tmp_installer"
 	DOWNLOAD_BASE="http://localhost:$MOCK_API_PORT/raw" \
 		ENDPOINT="http://localhost:$MOCK_API_PORT" \
-		bash "$PROJECT_DIR/install.sh" "$@"
+		bash "$tmp_installer" "$@"
 }
 
 @test "install: creates /etc/netweak directory" {
@@ -89,8 +91,10 @@ run_install() {
 }
 
 @test "install: --dev sets develop endpoint" {
+	local tmp_installer="/tmp/netweak_test_install.sh"
+	cp "$PROJECT_DIR/install.sh" "$tmp_installer"
 	DOWNLOAD_BASE="http://localhost:$MOCK_API_PORT/raw" \
-		bash "$PROJECT_DIR/install.sh" test-token-dev --dev 2>/dev/null || true
+		bash "$tmp_installer" test-token-dev --dev 2>/dev/null || true
 
 	# Clean up dev install path
 	if [ -d /etc/netweak-develop ]; then

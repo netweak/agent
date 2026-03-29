@@ -14,9 +14,12 @@ setup_file() {
 	echo $! > /tmp/mock_api_permissions_pid
 	sleep 1
 
-	# Run installer with mock download base
+	# Run installer with mock download base (copy to temp to avoid self-delete)
+	local tmp_installer="/tmp/netweak_test_install.sh"
+	cp "$PROJECT_DIR/install.sh" "$tmp_installer"
 	DOWNLOAD_BASE="http://localhost:$MOCK_API_PORT/raw" \
-		bash "$PROJECT_DIR/install.sh" test-token-permissions 2>/dev/null || true
+		ENDPOINT="http://localhost:$MOCK_API_PORT" \
+		bash "$tmp_installer" test-token-permissions 2>/dev/null || true
 }
 
 teardown_file() {

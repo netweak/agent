@@ -93,8 +93,8 @@ teardown() {
 		bash "$TEST_INSTALL_DIR/agent.sh" 2>/dev/null || true
 
 	# Expected: (8048056 - 2024000 - 3012000 - 512000) * 1024 = 2560057344
-	run grep -o '"ram_usage": [0-9]*' "$MOCK_API_LOG"
-	assert_output --partial '"ram_usage": 2560057344'
+	run grep -o '"ram_usage\\": 2560057344' "$MOCK_API_LOG"
+	assert_success
 }
 
 @test "agent extracts correct uptime from fixture" {
@@ -104,8 +104,8 @@ teardown() {
 		bash "$TEST_INSTALL_DIR/agent.sh" 2>/dev/null || true
 
 	# uptime fixture is 12345.67, int() truncates to 12345
-	run grep -o '"uptime": [0-9]*' "$MOCK_API_LOG"
-	assert_output --partial '"uptime": 12345'
+	run grep -o '"uptime\\": 12345' "$MOCK_API_LOG"
+	assert_success
 }
 
 @test "agent extracts correct file handles from fixture" {
@@ -114,11 +114,11 @@ teardown() {
 	PROC_DIR="$FIXTURES_DIR/proc" \
 		bash "$TEST_INSTALL_DIR/agent.sh" 2>/dev/null || true
 
-	run grep -o '"file_handles": [0-9]*' "$MOCK_API_LOG"
-	assert_output --partial '"file_handles": 1234'
+	run grep -o '"file_handles\\": 1234,' "$MOCK_API_LOG"
+	assert_success
 
-	run grep -o '"file_handles_limit": [0-9]*' "$MOCK_API_LOG"
-	assert_output --partial '"file_handles_limit": 65536'
+	run grep -o '"file_handles_limit\\": 65536' "$MOCK_API_LOG"
+	assert_success
 }
 
 @test "agent exits with error when config is missing" {

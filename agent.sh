@@ -1,12 +1,11 @@
 #!/bin/bash
-# shellcheck disable=SC1090,SC1001
+# shellcheck disable=SC1090,SC1091,SC1001
 
 # Ensure consistent PATH
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Determine script and install directories
+# Determine script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-INSTALL_PATH="$(basename "$SCRIPT_DIR")"
 
 # Source shared functions
 source "$SCRIPT_DIR/lib.sh"
@@ -15,17 +14,17 @@ source "$SCRIPT_DIR/lib.sh"
 PROC_DIR="${PROC_DIR:-/proc}"
 
 # Prevent concurrent agent runs via flock
-LOCK_FILE="/etc/$INSTALL_PATH/agent.lock"
+LOCK_FILE="$SCRIPT_DIR/agent.lock"
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
 	exit 0
 fi
 
 # Read config
-if [ -f "/etc/$INSTALL_PATH/config.conf" ]; then
-	source "/etc/$INSTALL_PATH/config.conf"
+if [ -f "$SCRIPT_DIR/config.conf" ]; then
+	source "$SCRIPT_DIR/config.conf"
 else
-	echo "Error: File /etc/$INSTALL_PATH/config.conf is missing." >&2
+	echo "Error: File $SCRIPT_DIR/config.conf is missing." >&2
 	exit 1
 fi
 
@@ -36,7 +35,7 @@ DEBUG="${debug:-0}"
 auth="$token"
 
 # Log directory
-LOG_DIR="/etc/$INSTALL_PATH/log"
+LOG_DIR="$SCRIPT_DIR/log"
 LOG_FILE="$LOG_DIR/agent.log"
 MAX_LOG_SIZE=1048576 # 1MB
 
@@ -50,7 +49,7 @@ log() {
 	echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
 }
 
-# shellcheck disable=SC2329
+# shellcheck disable=SC2329,SC2317
 log_error() {
 	echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$LOG_FILE" "$LOG_DIR/error.log" >&2
 }
@@ -215,8 +214,8 @@ cpu=$(( stat[0] + stat[1] + stat[2] + stat[3] ))
 io=$(( stat[3] + stat[4] ))
 idle=${stat[3]}
 
-if [ -e "/etc/$INSTALL_PATH/cache" ]; then
-	read -ra data < "/etc/$INSTALL_PATH/cache"
+if [ -e "$SCRIPT_DIR/cache" ]; then
+	read -ra data < "$SCRIPT_DIR/cache"
 	# shellcheck disable=SC2034
 	interval=$(( time - data[0] ))
 	cpu_gap=$(( cpu - data[1] ))
@@ -241,7 +240,7 @@ if [ -e "/etc/$INSTALL_PATH/cache" ]; then
 fi
 
 # Cache current values for next-run delta calculations
-echo "$time $cpu $io $idle $rx $tx" >"/etc/$INSTALL_PATH/cache"
+echo "$time $cpu $io $idle $rx $tx" >"$SCRIPT_DIR/cache"
 
 # Prepare load variables
 rx_gap=$(num "$rx_gap")

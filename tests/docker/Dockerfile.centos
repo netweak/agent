@@ -1,6 +1,6 @@
 FROM rockylinux:9
 
-RUN dnf install -y \
+RUN dnf install -y --allowerasing \
     bash curl wget cronie git sudo python3 \
     procps-ng iproute iputils net-tools coreutils util-linux \
     && dnf clean all

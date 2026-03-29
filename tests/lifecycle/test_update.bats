@@ -43,12 +43,19 @@ teardown() {
 
 @test "update: fails without root" {
 	# Install first
+	local tmp_installer="/tmp/netweak_test_install.sh"
+	cp "$PROJECT_DIR/install.sh" "$tmp_installer"
 	DOWNLOAD_BASE="http://localhost:$MOCK_API_PORT/raw" \
-		bash "$PROJECT_DIR/install.sh" test-token-update 2>/dev/null
+		ENDPOINT="http://localhost:$MOCK_API_PORT" \
+		bash "$tmp_installer" test-token-update 2>/dev/null
 
-	run su -s /bin/bash nobody -c "bash /etc/netweak/update.sh 2>&1"
+	# Copy to a location nobody can read, since /etc/netweak is 700
+	cp /etc/netweak/update.sh /tmp/test_update.sh
+	chmod 755 /tmp/test_update.sh
+	run su -s /bin/bash nobody -c "bash /tmp/test_update.sh 2>&1"
 	assert_failure
 	assert_output --partial "root"
+	rm -f /tmp/test_update.sh
 }
 
 @test "update: fails without config" {
@@ -62,8 +69,11 @@ teardown() {
 }
 
 @test "update: detects production installation" {
+	local tmp_installer="/tmp/netweak_test_install.sh"
+	cp "$PROJECT_DIR/install.sh" "$tmp_installer"
 	DOWNLOAD_BASE="http://localhost:$MOCK_API_PORT/raw" \
-		bash "$PROJECT_DIR/install.sh" test-token-update 2>/dev/null
+		ENDPOINT="http://localhost:$MOCK_API_PORT" \
+		bash "$tmp_installer" test-token-update 2>/dev/null
 
 	# Verify config has production endpoint (default)
 	run grep '^endpoint=' /etc/netweak/config.conf

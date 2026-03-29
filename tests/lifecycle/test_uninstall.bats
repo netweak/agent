@@ -36,8 +36,11 @@ teardown() {
 }
 
 install_agent() {
+	local tmp_installer="/tmp/netweak_test_install.sh"
+	cp "$PROJECT_DIR/install.sh" "$tmp_installer"
 	DOWNLOAD_BASE="http://localhost:$MOCK_API_PORT/raw" \
-		bash "$PROJECT_DIR/install.sh" test-token-uninstall 2>/dev/null
+		ENDPOINT="http://localhost:$MOCK_API_PORT" \
+		bash "$tmp_installer" test-token-uninstall 2>/dev/null
 }
 
 @test "uninstall: removes /etc/netweak directory" {
@@ -62,9 +65,13 @@ install_agent() {
 
 @test "uninstall: fails without root" {
 	install_agent
-	run su -s /bin/bash nobody -c "bash /etc/netweak/uninstall.sh 2>&1"
+	# Copy to a location nobody can read, since /etc/netweak is 700
+	cp /etc/netweak/uninstall.sh /tmp/test_uninstall.sh
+	chmod 755 /tmp/test_uninstall.sh
+	run su -s /bin/bash nobody -c "bash /tmp/test_uninstall.sh 2>&1"
 	assert_failure
 	assert_output --partial "root"
+	rm -f /tmp/test_uninstall.sh
 }
 
 @test "uninstall: fails if not installed" {
