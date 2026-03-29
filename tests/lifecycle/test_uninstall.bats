@@ -65,12 +65,14 @@ install_agent() {
 
 @test "uninstall: fails without root" {
 	install_agent
-	# Copy to a location nobody can read, since /etc/netweak is 700
+	# Copy to a location the test user can read, since /etc/netweak is 700
 	cp /etc/netweak/uninstall.sh /tmp/test_uninstall.sh
 	chmod 755 /tmp/test_uninstall.sh
-	run su -s /bin/bash nobody -c "bash /tmp/test_uninstall.sh 2>&1"
+	useradd -r -s /bin/bash netweak-testuser 2>/dev/null || true
+	run su -s /bin/bash netweak-testuser -c "bash /tmp/test_uninstall.sh 2>&1"
 	assert_failure
 	assert_output --partial "root"
+	userdel netweak-testuser 2>/dev/null || true
 	rm -f /tmp/test_uninstall.sh
 }
 

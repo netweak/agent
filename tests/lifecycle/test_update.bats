@@ -49,12 +49,14 @@ teardown() {
 		ENDPOINT="http://localhost:$MOCK_API_PORT" \
 		bash "$tmp_installer" test-token-update 2>/dev/null
 
-	# Copy to a location nobody can read, since /etc/netweak is 700
+	# Copy to a location the test user can read, since /etc/netweak is 700
 	cp /etc/netweak/update.sh /tmp/test_update.sh
 	chmod 755 /tmp/test_update.sh
-	run su -s /bin/bash nobody -c "bash /tmp/test_update.sh 2>&1"
+	useradd -r -s /bin/bash netweak-testuser 2>/dev/null || true
+	run su -s /bin/bash netweak-testuser -c "bash /tmp/test_update.sh 2>&1"
 	assert_failure
 	assert_output --partial "root"
+	userdel netweak-testuser 2>/dev/null || true
 	rm -f /tmp/test_update.sh
 }
 
