@@ -221,12 +221,17 @@ ping_as=$(prep $(num "$(ping -c 2 -w 2 ping-as.netweak.com | grep rtt | cut -d'/
 # Build data for post
 data_post="token=${auth[0]}&data=$(base "$version") $(base "$uptime") $(base "$sessions") $(base "$processes") $(base "$processes_array") $(base "$file_handles") $(base "$file_handles_limit") $(base "$os_kernel") $(base "$os_name") $(base "$os_arch") $(base "$cpu_name") $(base "$cpu_cores") $(base "$cpu_freq") $(base "$ram_total") $(base "$ram_usage") $(base "$swap_total") $(base "$swap_usage") $(base "$disk_array") $(base "$disk_total") $(base "$disk_usage") $(base "$connections") $(base "$nic") $(base "$ipv4") $(base "$ipv6") $(base "$rx") $(base "$tx") $(base "$rx_gap") $(base "$tx_gap") $(base "$load") $(base "$load_cpu") $(base "$load_io") $(base "$ping_eu") $(base "$ping_us") $(base "$ping_as")"
 
+# Write data to temporary file for reliable transmission
+tmp_file=$(mktemp)
+trap 'rm -f "$tmp_file"' EXIT
+echo "$data_post" > "$tmp_file"
+
 # API request with automatic termination
 if [ -n "$(command -v timeout)" ]
 then
-	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" "https://api.netweak.com/agent/report"
+	timeout -s SIGKILL 30 wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-file="$tmp_file" "https://api.netweak.com/agent/report"
 else
-	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-data "$data_post" "https://api.netweak.com/agent/report"
+	wget -q -o /dev/null -O /etc/netweak/log/agent.log -T 25 --post-file="$tmp_file" "https://api.netweak.com/agent/report"
 	wget_pid=$!
 	wget_counter=0
 	wget_timeout=30
@@ -241,4 +246,4 @@ else
 fi
 
 # Finished
-exit 1
+exit 0
