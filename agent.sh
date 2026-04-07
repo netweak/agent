@@ -64,12 +64,15 @@ debug_log() {
 api_request() {
 	local url="$1"
 	local payload="$2"
+	local tmp_file
+	tmp_file=$(mktemp)
+	echo "$payload" > "$tmp_file"
 
 	debug_log "Sending request to $url"
 	if [ -n "$(command -v timeout)" ]; then
-		timeout -s SIGKILL 30 wget -q -o /dev/null -O /dev/null -T 25 --post-data "$payload" --header="Content-Type: application/json" "$url"
+		timeout -s SIGKILL 30 wget -q -o /dev/null -O /dev/null -T 25 --post-file="$tmp_file" --header="Content-Type: application/json" "$url"
 	else
-		wget -q -o /dev/null -O /dev/null -T 25 --post-data "$payload" --header="Content-Type: application/json" "$url" &
+		wget -q -o /dev/null -O /dev/null -T 25 --post-file="$tmp_file" --header="Content-Type: application/json" "$url" &
 		local wget_pid=$!
 		local wget_counter=0
 		local wget_timeout=30
@@ -81,6 +84,8 @@ api_request() {
 
 		kill -0 "$wget_pid" 2>/dev/null && kill -s SIGKILL "$wget_pid"
 	fi
+
+	rm -f "$tmp_file"
 }
 
 log "Agent started"
