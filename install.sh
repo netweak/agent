@@ -5,10 +5,14 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Default values
 VERSION="1.3"
-ENDPOINT="${ENDPOINT:-https://api.netweak.com}"
 BRANCH="main"
 INSTALL_PATH="netweak"
 DEBUG=0
+
+# An explicit ENDPOINT wins over the one --dev would pick, so a test run can
+# point the whole install at a local API. Resolved after argument parsing.
+ENDPOINT_OVERRIDE="${ENDPOINT:-}"
+DEFAULT_ENDPOINT="https://api.netweak.com"
 
 # Function to display usage information
 usage() {
@@ -30,7 +34,7 @@ eval set -- "$PARSED_ARGS"
 while true; do
 	case "$1" in
 	--dev)
-		ENDPOINT="https://api.netweak.dev"
+		DEFAULT_ENDPOINT="https://api.netweak.dev"
 		BRANCH="develop"
 		INSTALL_PATH="netweak-develop"
 		shift
@@ -49,6 +53,8 @@ while true; do
 		;;
 	esac
 done
+
+ENDPOINT="${ENDPOINT_OVERRIDE:-$DEFAULT_ENDPOINT}"
 
 # Get token
 TOKEN="$1"
@@ -74,50 +80,60 @@ if ! command -v curl >/dev/null 2>&1; then
 	exit 1
 fi
 
-# Exchange team token for agent token
-if [[ $TOKEN == team_* ]]; then
-	echo -e "|   Exchanging team token for server token\n|"
-	http_code=$(curl -s -o /tmp/netweak_response.txt -w '%{http_code}' \
+fail() {
+	echo -e "|\n|   Error: $1\n|"
+	exit 1
+}
+
+RESPONSE_FILE="$(mktemp)"
+trap 'rm -f "$RESPONSE_FILE"' EXIT
+
+# Pull one string field out of the last response. The agent ships with no
+# dependencies beyond curl, so there is no jq to lean on; this tolerates the
+# whitespace a formatter might add, but not escaped quotes inside the value —
+# tokens and API messages have neither.
+json_field() {
+	grep -o "\"$1\":[[:space:]]*\"[^\"]*\"" "$RESPONSE_FILE" | head -n 1 | cut -d'"' -f4
+}
+
+# Enrol this machine and get the token it will report with.
+#
+# One request, whichever kind of token was handed in: the dashboard builds the
+# command with a project token, update.sh passes back the server token this
+# machine already holds. The API knows which is which, so the installer does
+# not have to guess — and a token it rejects stops the install here, before
+# anything is written.
+resolve_token() {
+	local http_code api_message
+
+	http_code=$(curl -s -o "$RESPONSE_FILE" -w '%{http_code}' \
 		-X POST -H "Content-Type: application/json" \
-		-d "{\"team_token\":\"$TOKEN\",\"name\":\"$(hostname)\"}" \
-		"$ENDPOINT/agent/get-token")
+		-d "{\"token\":\"$TOKEN\",\"name\":\"$(hostname)\"}" \
+		"$ENDPOINT/agent/enroll")
 
 	case "$http_code" in
-		200)
-			token=$(grep -o '"token":"[^"]*"' /tmp/netweak_response.txt | cut -d'"' -f4)
-			if [ -z "$token" ]; then
-				echo -e "|   Error: Could not parse token from API response\n|"
-				rm -f /tmp/netweak_response.txt
-				exit 1
-			fi
-			;;
-		401)
-			echo -e "|   Error: Invalid team token. Make sure your installation command is correct.\n|"
-			rm -f /tmp/netweak_response.txt
-			exit 1
-			;;
-		403)
-			api_message=$(grep -o '"message":"[^"]*"' /tmp/netweak_response.txt | cut -d'"' -f4)
-			echo -e "|   Error: ${api_message:-Plan limit reached}\n|"
-			rm -f /tmp/netweak_response.txt
-			exit 1
-			;;
-		422)
-			echo -e "|   Error: Invalid parameters sent to API\n|"
-			rm -f /tmp/netweak_response.txt
-			exit 1
-			;;
-		*)
-			echo -e "|   Error: Failed to retrieve token from API (HTTP $http_code)\n|"
-			rm -f /tmp/netweak_response.txt
-			exit 1
-			;;
+	200)
+		token=$(json_field token)
+		[ -n "$token" ] || fail "Could not read the server token from the API response"
+
+		if grep -q '"created":[[:space:]]*true' "$RESPONSE_FILE"; then
+			echo -e "|   Registered this server with your project\n|"
+		else
+			echo -e "|   Reusing the registration this machine already has\n|"
+		fi
+		;;
+	401)
+		fail "Invalid token. Copy a fresh installation command from your Netweak dashboard"
+		;;
+	403)
+		api_message=$(json_field message)
+		fail "${api_message:-Plan limit reached}"
+		;;
+	*)
+		fail "Could not enrol this server with the API (HTTP $http_code)"
+		;;
 	esac
-	rm -f /tmp/netweak_response.txt
-else
-	# Token is a direct agent token, using it as is
-	token="$TOKEN"
-fi
+}
 
 # Check if crontab is installed
 if [ -z "$(command -v crontab)" ]; then
@@ -182,6 +198,11 @@ if ! pgrep -x "cron|crond" >/dev/null 2>&1; then
 	fi
 fi
 
+# Last thing before anything is written: a bad token here means an agent that
+# installs cleanly and then reports into nowhere. Registering also consumes a
+# plan slot, so it waits until the machine is known to be able to run the agent.
+resolve_token
+
 # Attempt to delete previous agent
 if [ -f "/etc/$INSTALL_PATH/agent.sh" ]; then
 	echo -e "|   Removing previous agent\n|"
@@ -243,13 +264,12 @@ crontab -u "$INSTALL_PATH" -l 2>/dev/null | {
 	echo "* * * * * bash /etc/$INSTALL_PATH/agent.sh 2>> /etc/$INSTALL_PATH/log/error.log"
 } | crontab -u "$INSTALL_PATH" -
 
-# Validate token
-check_code=$(curl -s -o /dev/null -w '%{http_code}' \
-	-X POST -H "Content-Type: application/json" \
-	-d "{\"token\":\"$token\"}" "$ENDPOINT/agent/check-token")
-if [ "$check_code" != "200" ]; then
-	echo -e "|   Warning: Token validation failed (HTTP $check_code). The agent may not report correctly.\n|"
-fi
+# Report once now rather than leaving the server pending until cron next
+# fires, up to a minute away. A failure here is not fatal: cron retries, and
+# the token was already validated above.
+echo -e "|   Sending the first report\n|"
+su -s /bin/bash -c "bash '/etc/$INSTALL_PATH/agent.sh'" "$INSTALL_PATH" \
+	2>>"/etc/$INSTALL_PATH/log/error.log" || true
 
 # Show success
 echo -e "|\n|   Success: The Netweak agent has been installed\n|"

@@ -135,38 +135,29 @@ Full system metrics report sent every minute by `agent.sh`.
 | `ping_us` | string | ms | Latency to US ping endpoint |
 | `ping_as` | string | ms | Latency to Asia ping endpoint |
 
-### `POST /agent/get-token`
+### `POST /agent/enroll`
 
-Exchanges a team token for a server token during installation. Called by `install.sh` when the token argument starts with `team_`.
+Turns the installation token into the server token the agent reports with.
+Called by `install.sh` before it writes anything, so a token the API rejects
+stops the install rather than leaving an agent that reports into nowhere.
+
+`token` is whichever kind the caller holds — the project token from the
+dashboard command, or the server token `update.sh` passes back. The API
+resolves it; the installer does not need to know which it has.
 
 ```json
 {
-  "team_token": "string — team token (team_*)",
-  "name": "string — server hostname (optional)"
+  "token": "string — project token or server token",
+  "name": "string — server hostname (optional, used only when creating)"
 }
 ```
 
 | Status | Meaning | Agent action |
 |---|---|---|
-| 200 | Server created, token returned | Use the returned `token` for reporting |
-| 401 | Invalid team token | Stop — the team token is wrong or revoked |
-| 403 `PlanLimitReached` | Team's plan doesn't allow more servers | Stop and display the error message (includes billing link) |
-| 422 | Validation error | Stop — missing/invalid parameters |
-
-### `POST /agent/check-token`
-
-Validates an existing server token. Called by `install.sh` after installation to verify the token is active.
-
-```json
-{
-  "token": "string — server authentication token"
-}
-```
-
-| Status | Meaning |
-|---|---|
-| 200 | Token is valid |
-| 401 | Token is incorrect or server has been deleted |
+| 200 `created: true` | A project token; a server was created and a plan slot used | Use the returned `token` for reporting |
+| 200 `created: false` | Already a server token | Keep using it |
+| 401 | The API does not recognise the token | Stop — it is wrong, revoked, or the server was deleted |
+| 403 `PlanLimitReached` | The plan doesn't allow more servers | Stop and display the message (includes billing link) |
 
 ### `POST /agent/heartbeat`
 

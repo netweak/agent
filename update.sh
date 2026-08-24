@@ -25,17 +25,19 @@ fi
 # Read config
 source "/etc/$INSTALL_PATH/config.conf"
 
-# Build extra flags from config
-EXTRA_FLAGS=""
+# Build extra flags from config. An array, so an empty list passes no argument
+# at all — quoting a string here sent " --debug" through as one positional and
+# the installer never saw the flag.
+EXTRA_FLAGS=()
 if [ "${debug:-0}" -eq 1 ]; then
-	EXTRA_FLAGS="$EXTRA_FLAGS --debug"
+	EXTRA_FLAGS+=(--debug)
 fi
 
 # Determine if this is a dev install
 if [ "$INSTALL_PATH" = "netweak-develop" ] || [ "$endpoint" = "https://api.netweak.dev" ]; then
 	echo -e "|   Detected dev installation, updating from netweak.sh/dev\n|"
-	curl -fsSL netweak.sh/dev | sudo bash -s "$token" --dev "$EXTRA_FLAGS"
+	curl -fsSL netweak.sh/dev | sudo bash -s "$token" --dev "${EXTRA_FLAGS[@]}"
 else
 	echo -e "|   Detected production installation, updating from netweak.sh\n|"
-	curl -fsSL netweak.sh | sudo bash -s "$token" "$EXTRA_FLAGS"
+	curl -fsSL netweak.sh | sudo bash -s "$token" "${EXTRA_FLAGS[@]}"
 fi

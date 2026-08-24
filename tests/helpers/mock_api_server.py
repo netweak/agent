@@ -3,7 +3,7 @@
 
 Logs all POST requests (path + body) to a file for assertion by BATS tests.
 Serves local files when GET requests match /raw/<filename> (for install.sh tests).
-Handles agent API endpoints (get-token, check-token) with test-specific responses.
+Handles the agent enrolment endpoint with test-specific responses.
 
 Usage:
     python3 mock_api_server.py [port] [serve_dir]
@@ -30,46 +30,43 @@ class Handler(BaseHTTPRequestHandler):
         with open(REQUESTS_LOG, "a") as f:
             f.write(json.dumps({"path": self.path, "body": body}) + "\n")
 
-        if self.path == "/agent/get-token":
-            self._handle_get_token(body)
-        elif self.path == "/agent/check-token":
-            self._handle_check_token(body)
+        if self.path == "/agent/enroll":
+            self._handle_enroll(body)
         else:
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
 
-    def _handle_get_token(self, body):
-        team_token = self._parse_field(body, "team_token")
+    # Project tokens the real endpoint would recognise. Anything else is
+    # treated as an already-registered server token and echoed back, except
+    # INVALID_TOKEN which stands for one the API has never seen.
+    PROJECT_TOKEN = "mock_project_token"
+    PROJECT_TOKEN_AT_LIMIT = "mock_project_token_at_limit"
+    INVALID_TOKEN = "invalid_token"
 
-        if team_token == "team_invalid":
-            self.send_response(401)
+    def _handle_enroll(self, body):
+        token = self._parse_field(body, "token")
+
+        if token == self.PROJECT_TOKEN:
+            self.send_response(200)
             self.end_headers()
-            self.wfile.write(b'{"message":"Invalid team token"}')
-        elif team_token == "team_limit_reached":
+            self.wfile.write(b'{"token":"mock_server_token_abc123","created":true}')
+        elif token == self.PROJECT_TOKEN_AT_LIMIT:
             self.send_response(403)
             self.end_headers()
             self.wfile.write(json.dumps({
                 "error": "PlanLimitReached",
-                "message": "Server limit reached for this team's billing plan.",
+                "message": "Server limit reached for this project's billing plan.",
                 "documentation": "https://netweak.com/pricing",
             }).encode())
-        else:
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'{"token":"mock_server_token_abc123"}')
-
-    def _handle_check_token(self, body):
-        token = self._parse_field(body, "token")
-
-        if token == "invalid_token":
+        elif token == self.INVALID_TOKEN:
             self.send_response(401)
             self.end_headers()
-            self.wfile.write(b'{"valid":false,"message":"Token is incorrect or server has been deleted."}')
+            self.wfile.write(b'{"message":"Token is incorrect or the server has been deleted."}')
         else:
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b'{"valid":true}')
+            self.wfile.write(json.dumps({"token": token, "created": False}).encode())
 
     def _parse_field(self, body, field):
         """Parse a field from JSON or form-encoded body."""

@@ -90,20 +90,20 @@ run_install() {
 	assert_output "debug=1"
 }
 
-@test "install: --dev sets develop endpoint" {
-	local tmp_installer="/tmp/netweak_test_install.sh"
-	cp "$PROJECT_DIR/install.sh" "$tmp_installer"
-	DOWNLOAD_BASE="http://localhost:$MOCK_API_PORT/raw" \
-		bash "$tmp_installer" test-token-dev --dev 2>/dev/null || true
+# ENDPOINT is set here so the install talks to the mock rather than the real
+# dev API; what --dev is being checked for is the separate install path.
+@test "install: --dev installs alongside a production agent" {
+	run_install test-token-dev --dev 2>/dev/null
 
-	# Clean up dev install path
-	if [ -d /etc/netweak-develop ]; then
-		run grep '^endpoint=' /etc/netweak-develop/config.conf
-		assert_output "endpoint=https://api.netweak.dev"
-		crontab -u netweak-develop -r 2>/dev/null || true
-		rm -rf /etc/netweak-develop
-		userdel netweak-develop 2>/dev/null || true
-	fi
+	[ -d /etc/netweak-develop ]
+	[ ! -d /etc/netweak ]
+
+	run grep '^endpoint=' /etc/netweak-develop/config.conf
+	assert_output "endpoint=http://localhost:$MOCK_API_PORT"
+
+	crontab -u netweak-develop -r 2>/dev/null || true
+	rm -rf /etc/netweak-develop
+	userdel netweak-develop 2>/dev/null || true
 }
 
 @test "install: reinstall removes old files" {
@@ -138,28 +138,39 @@ run_install() {
 	assert_failure
 }
 
-@test "install: team token exchanges for server token" {
-	run_install team_valid_token 2>/dev/null
+@test "install: project token exchanges for server token" {
+	run_install mock_project_token 2>/dev/null
 	[ -d /etc/netweak ]
 	run grep '^token=' /etc/netweak/config.conf
 	assert_output "token=mock_server_token_abc123"
 }
 
-@test "install: invalid team token fails" {
-	run run_install team_invalid 2>&1
-	assert_failure
-	assert_output --partial "Invalid team token"
-}
-
-@test "install: plan limit reached fails with billing link" {
-	run run_install team_limit_reached 2>&1
-	assert_failure
-	assert_output --partial "limit reached"
-}
-
-@test "install: validates token after installation" {
+# What update.sh does: hand back the server token the machine already holds.
+@test "install: an already-registered server token is reused" {
 	run_install test-token-check 2>/dev/null
 	[ -d /etc/netweak ]
 	run grep '^token=' /etc/netweak/config.conf
 	assert_output "token=test-token-check"
+}
+
+@test "install: invalid token fails before anything is installed" {
+	run run_install invalid_token 2>&1
+	assert_failure
+	assert_output --partial "Invalid token"
+	[ ! -d /etc/netweak ]
+	run id -u netweak
+	assert_failure
+}
+
+@test "install: plan limit reached fails with billing link" {
+	run run_install mock_project_token_at_limit 2>&1
+	assert_failure
+	assert_output --partial "limit reached"
+	[ ! -d /etc/netweak ]
+}
+
+@test "install: sends a first report instead of waiting for cron" {
+	run_install mock_project_token 2>/dev/null
+	run grep -c '"path": "/agent/report"' /tmp/mock_api_install.log
+	assert_success
 }
